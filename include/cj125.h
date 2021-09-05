@@ -11,7 +11,6 @@
 #define UA_ANALOG_READ_PIN    35     
 #define UB_ANALOG_READ_PIN    34
 #define UR_ANALOG_READ_PIN    32
-#define HEATER_PWM_PIN        20 //////////////TODO
 
 #define MAXIMUM_LAMBDA_ADC_VALUE    791
 #define MINIMUM_LAMBDA_ADC_VALUE    39
@@ -64,5 +63,13 @@ CJ125_RESPONSE cj125SendRequest(CJ125_REQUEST data);
 float translateLambdaValue(uint16_t data);
 
 float translateOxygenValue(uint16_t data);
+
+ADC_READ readCjValues();
+
+boolean isBatteryAlright();
+
+void displayValues();
+
+void setHeaterPWM(uint16_t PWM);
 
 #endif

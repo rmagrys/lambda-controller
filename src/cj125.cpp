@@ -1,7 +1,7 @@
 #include "cj125.h"
 #include "SPI.h"
 #include "logger.h"
-#include "../lib/analog_write.h"
+#include "analog_write.h"
 #include "conversion.h"
 
 SPIClass * vspi = NULL;
@@ -11,8 +11,10 @@ static const uint32_t spiClk = 2000000; // 2 MHz
 static uint32_t programTime = 0;
 static uint32_t actionTime = 0;
 static uint32_t pwmIntervalTime = 0;
-int heaterPWM = 0;
+uint16_t heaterPWM = 0;
 float powerSupply = 0; 
+
+#define HEATER_PWM_PIN 20 //////////////TODO
 
 ADC_READ optimalCjConfig = {0,0,0};
 ADC_READ cjReadValues = {0,0,0};
@@ -21,7 +23,7 @@ ADC_READ cjReadValues = {0,0,0};
 void cj125PinInitialize(){
   pinMode(UR_ANALOG_READ_PIN, INPUT);
   pinMode(UB_ANALOG_READ_PIN, INPUT);
-  //pinMode(UA_ANALOG_READ_PIN, INPUT);
+  pinMode(UA_ANALOG_READ_PIN, INPUT);
   analogRead(UA_ANALOG_READ_PIN);
   pinMode(CJ125_SS, OUTPUT); 
 }
@@ -99,12 +101,11 @@ void cj125Calibration(){
 
 void condensationPhase(){
   
-  
-  powerSupply = (float)cjReadValues.UB / 1023 * 3.3 * 3;
-  heaterPWM = ( 2 / powerSupply) * 255;
-  analogWrite(HEATER_PWM_PIN, heaterPWM);
+  powerSupply = (float)cjReadValues.UB / 1023 * 3.3 * 3; // te wartosci trzeba posprawdzac zgodnie z dzielnikami
+  heaterPWM = ( 2 / powerSupply) * 255; // te wartosci trzeba posprawdzac zgodnie z dzielnikami i zobaczyc jak działa analog write
+  setHeaterPWM(heaterPWM);
 
-  //TODO przerobić z delay na time
+  //TODO przerobić z delay na time + dodać miganie diody
 
   logInfo("Condensation phase please wait");
   delay(5000);
@@ -120,9 +121,9 @@ void rampUpPhase() {
 
     if(heaterPWM > 255) heaterPWM = 255;
 
-    analogWrite(HEATER_PWM_PIN, heaterPWM);
+    setHeaterPWM(heaterPWM);
 
-    delay(1000); // TODO przerobić delay
+    delay(1000); // TODO przerobić delay + dodać miganie diody w innej czestotliwosci
     UHeater += 0.4;
     Serial.print(".");
   }
@@ -134,12 +135,12 @@ void optimalHeatingPhase(){
   logInfo("Optimal heating phase");
   while(analogRead(UR_ANALOG_READ_PIN) > optimalCjConfig.UR)
   {
-    delay(200); //TODO przerobić delay
+    delay(200); //TODO przerobić delay dodać miganie diody w jeszcze innej czestotliwosci
     Serial.print(".");
   }
   logInfo("Done");
 
-  analogWrite(HEATER_PWM_PIN, 0);
+  setHeaterPWM(0);
 }
 
 boolean isAdcLambdaValueInRange(uint16_t data) {
@@ -166,8 +167,6 @@ float translateLambdaValue(uint16_t data){
   return result;
 }
 
-
-
 boolean isAdcOxygenValueInRange(uint16_t data){
   return data >= MINIMUM_OXYGEN_ADC_VALUE && data <= MAXIMUM_OXYGEN_ADC_VALUE;
 }
@@ -182,9 +181,6 @@ float translateOxygenValue(uint16_t data){
 
   return result;
 }
-
-
-
 
 CJ125_RESPONSE cj125SendRequest_v2(CJ125_REQUEST data) {
 
@@ -214,4 +210,76 @@ CJ125_RESPONSE cj125SendRequest(CJ125_REQUEST data)
   
 }
 
- 
+ADC_READ readCjValues()
+{
+  responseStatus = cj125SendRequest(DIAGNOSTIC);
+
+  cjReadValues.UA = analogRead(UA_ANALOG_READ_PIN);
+  cjReadValues.UB = analogRead(UB_ANALOG_READ_PIN);
+  cjReadValues.UR = analogRead(UR_ANALOG_READ_PIN);
+
+  return cjReadValues;
+}
+
+boolean isBatteryAlright()
+{
+  if(cjReadValues.UB > MINIMUM_BATTERY_ADC_VALUE) 
+  {
+    return true;
+  }
+  else
+  {
+    logInfo("Battery is low");
+  }
+}
+
+void displayValues()
+{
+  const float LAMBDA_VALUE = translateLambdaValue(cjReadValues.UA);
+  const float OXYGEN_CONTENT = translateOxygenValue(cjReadValues.UA);
+
+    //Update analog output.
+    //UpdateAnalogOutput();
+      
+    //Display information if no errors is reported.
+    if (responseStatus == STATUS_OK) {
+      
+      //Assemble data.
+      String txString = "Measuring, CJ125: 0x";
+      txString += String(responseStatus, HEX);
+      txString += ", UA_ADC: ";
+      txString += String(cjReadValues.UA, DEC);
+      txString += ", UR_ADC: ";
+      txString += String(cjReadValues.UR, DEC);
+      txString += ", UB_ADC: ";
+      txString += String(cjReadValues.UB, DEC);
+
+      //Display lambda value unless out of range.
+      if (isAdcLambdaValueInRange(cjReadValues.UA)) {
+          txString += ", Lambda: ";
+          txString += String(LAMBDA_VALUE, 2);
+      } else {
+          txString += ", Lambda: -";
+      }
+
+      //Display oxygen unless out of range.
+      if (isAdcOxygenValueInRange(cjReadValues.UA)) {
+        txString += ", Oxygen: ";
+        txString += String(OXYGEN_CONTENT, 2);
+        txString += "%";
+      } else {
+        txString += ", Oxygen: -";
+      }
+      
+      //Output string
+      logInfo(txString);
+  }
+}
+
+void setHeaterPWM(uint16_t PWM)
+{
+    analogWrite(HEATER_PWM_PIN, PWM);
+}
+
+
+

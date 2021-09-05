@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include "cj125.h"
 #include "regulator.h"
-
+#include "analog_write.h"
 
 uint32_t programTime = 0;
-uint32_t interval_time = 0;
+uint32_t readValuesIntervalTime = 0;
+uint32_t displayValuesIntervalTime = 0;
+uint16_t PWM;
 
-uint16_t vspiCommand(uint16_t data);
+ADC_READ cjValues;
+
 
 void setup() {
   Serial.begin(115200);
@@ -14,14 +17,22 @@ void setup() {
   cj125SpiInitalize();
   cj125Startup();
   cj125Calibration();
+  readCjValues();
 }
 
 void loop() {
   programTime = millis();
+  if(!isBatteryAlright()) setup();
 
-  if(programTime - interval_time > 1000)
+  if(programTime - readValuesIntervalTime > 20)
   {
-   
+    cjValues = readCjValues();
+    PWM = adjustHeaterOutputPWM(cjValues);
+    setHeaterPWM(PWM);
+    if(programTime - displayValuesIntervalTime > 1000)
+    {
+      displayValues();
+    }
   }
 }
 

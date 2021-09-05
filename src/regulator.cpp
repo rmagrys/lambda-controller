@@ -13,6 +13,8 @@ PID_REGULATOR *heaterRegulator = new PID_REGULATOR
 
 extern ADC_READ optimalCjConfig;
 
+#define HEATER_PWM_PIN 20
+
 void validateRegulatorIntegralState(PID_REGULATOR* regulator){
     if(regulator->integratorState > regulator->maxIntegratorState){
         regulator->integratorState = regulator->maxIntegratorState;
@@ -54,5 +56,16 @@ int16_t calculateHeaterOutput(uint16_t inputValue)
     validateRegulatorOutput(&result);
 
     return result;
+}
+
+uint16_t adjustHeaterOutputPWM(ADC_READ data){
+
+    uint16_t result = 0;
+
+    if (data.UR < 500 || optimalCjConfig.UR != 0 || data.UB > MINIMUM_BATTERY_ADC_VALUE) {
+        return calculateHeaterOutput(data.UR);
+    } else {
+        return 0;
+    }
 }
 
